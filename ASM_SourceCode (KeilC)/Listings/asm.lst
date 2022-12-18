@@ -1,0 +1,749 @@
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     1
+
+
+MACRO ASSEMBLER A51 V8.2.7.0
+OBJECT MODULE PLACED IN .\Objects\asm.obj
+ASSEMBLER INVOKED BY: D:\Practice\C51\BIN\A51.EXE asm.a51 SET(SMALL) DEBUG PRINT(.\Listings\asm.lst) OBJECT(.\Objects\as
+                      m.obj) EP
+
+LOC  OBJ            LINE     SOURCE
+
+                       1     ;------------------------------------------------------------------------------------------
+                             ---
+                       2             ;Variables
+                       3                     ; R0 mode
+                       4                     ; R1 phase
+                       5                     ; R2 10ms_counter
+                       6                     ; R3 second
+                       7                     ; R4 red_time
+                       8                     ; R5 green_time
+                       9                     ; R7 tmp
+  000A                10                     normal_red_time         equ 10
+  0014                11                     normal_green_time       equ 20
+  0014                12                     peak_red_time           equ 20
+  0028                13                     peak_green_time         equ 40
+  0003                14                     yellow_time             equ 3
+  00B0                15                     red_led_1                       equ 0b0h
+  00B1                16                     red_led_2                       equ 0b1h
+  00B4                17                     yellow_led_1            equ 0b4h
+  00B5                18                     yellow_led_2            equ 0b5h
+  00B6                19                     green_led_1             equ 0b6h
+  00B7                20                     green_led_2             equ 0b7h
+  0080                21                     stop_led_1                      equ 80h
+  0081                22                     stop_led_2                      equ 81h
+  0082                23                     walk_led_1                      equ 82h
+  0083                24                     walk_led_2                      equ 83h
+                      25                     ;org    500h
+                      26                     ;first_red:     db 10
+                      27                     ;first_green:   db 20
+                      28                     ;second_red:    db 10
+                      29                     ;second_green:  db 20
+                      30     ;------------------------------------------------------------------------------------------
+                             ---
+                      31             ; Reset and Interrupt vectors
+                      32                     ; Reset Vector
+0000                  33             org 0000h
+0000 0201F7           34                     ljmp Reset_ISR
+                      35                     ; External Interrupt 0 Vector
+0003                  36             org     0003h
+0003 020207           37                     ljmp INT0_ISR
+                      38                     ; Timer0 Interrupt Vector
+000B                  39             org     000bh
+000B 020230           40                     ljmp Timer0_ISR
+                      41                     ; External Interrupt 1 Vector
+0013                  42             org     0013h
+0013 020221           43                     ljmp INT1_ISR
+                      44     ;------------------------------------------------------------------------------------------
+                             ---
+                      45             ; Code
+0030                  46             org     0030h
+                      47                     ; Main
+0030                  48             Start:  
+0030 75A887           49                     mov     IE, #87h                        ; Enable external interrupt 0, Time
+                             r 0 interrupt and external interrupt 1
+0033 758911           50                     mov     TMOD, #11h                      ; Enable mode 1 Timer 0 and mode 1 
+                             Timer 1
+0036 758805           51                     mov     TCON, #05h                      ; Enable falling-edge trigger for e
+                             xternal interrupt 0 and external interrupt 1
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     2
+
+0039 758CD8           52                     mov     TH0, #0d8h                      ; Init
+003C 758AFF           53                     mov     TL0, #0ffh                      ; Timer 0
+003F D28C             54                     setb    TR0                                     ; Enable Timer 0
+0041 B80103           55                     cjne    r0, #1, Loop            ; 
+0044 120130           56                     lcall   Phase_Init                      ; 
+0047                  57             Loop:   
+0047 B801FD           58                     cjne    r0, #1, Loop
+004A 12004F           59                     lcall   Mode_1
+004D 80F8             60                     jmp     Loop
+                      61     ;---------------------------Mode 1---------------------------
+004F                  62             Mode_1:                                                                            
+                                                  
+004F 120056           63                     lcall Phase_Update                                                         
+                                          
+0052 1200CD           64                     lcall Phase_Call
+0055 22               65             ret
+                      66     ;------------------------------------------------------------
+                      67     ;--------------------Mode 1 Phase Update--------------------- 
+0056                  68             Phase_Update:                                                           ; Check and
+                              update phase-to-phase
+0056                  69             phase_1_update:
+0056 B90118           70                     cjne r1, #1, phase_2_update
+0059 BB0370           71                     cjne r3, #yellow_time, Phase_Update_exit
+005C 7F01             72                     mov r7, #1
+005E 12032D           73                     lcall walk_off
+0061 12030C           74                     lcall stop_on
+0064 7F02             75                     mov r7, #2
+0066 120301           76                     lcall green_off
+0069 1202D5           77                     lcall yellow_on
+                      78                     ;lcall Phase_Clear
+006C 7902             79                     mov r1, #2
+                      80                     ;lcall Phase_Init
+006E 020343           81                     ljmp exit
+0071                  82             phase_2_update:
+0071 B90220           83                     cjne r1, #2, phase_3_update
+0074 BB0055           84                     cjne r3, #0, Phase_Update_exit
+0077 ED               85                     mov a, r5
+0078 FB               86                     mov r3, a
+0079 7F01             87                     mov r7, #1
+007B 1202CA           88                     lcall red_off
+007E 1202F6           89                     lcall green_on
+0081 7F02             90                     mov r7, #2
+0083 1202E0           91                     lcall yellow_off
+0086 1202BF           92                     lcall red_on
+0089 120317           93                     lcall stop_off
+008C 120322           94                     lcall walk_on
+                      95                     ;lcall Phase_Clear
+008F 7903             96                     mov r1, #3
+                      97                     ;lcall Phase_Init
+0091 020343           98                     ljmp exit
+0094                  99             phase_3_update:
+0094 B90318          100                     cjne r1, #3, phase_4_update
+0097 BB0332          101                     cjne r3, #yellow_time, Phase_Update_exit
+009A 7F01            102                     mov r7, #1
+009C 120301          103                     lcall green_off
+009F 1202D5          104                     lcall yellow_on
+00A2 7F02            105                     mov r7, #2
+00A4 12032D          106                     lcall walk_off
+00A7 12030C          107                     lcall stop_on
+                     108                     ;lcall Phase_Clear
+00AA 7904            109                     mov r1, #4
+                     110                     ;lcall Phase_Init
+00AC 020343          111                     ljmp exit
+00AF                 112             phase_4_update:
+00AF BB001A          113                     cjne r3, #0, Phase_Update_exit
+00B2 EC              114                     mov a, r4
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     3
+
+00B3 FB              115                     mov r3, a
+00B4 7F01            116                     mov r7, #1
+00B6 1202E0          117                     lcall yellow_off
+00B9 1202BF          118                     lcall red_on
+00BC 120317          119                     lcall stop_off
+00BF 120322          120                     lcall walk_on
+00C2 7F02            121                     mov r7, #2
+00C4 1202CA          122                     lcall red_off
+00C7 1202F6          123                     lcall green_on
+                     124                     ;lcall Phase_Clear
+00CA 7901            125                     mov r1, #1
+                     126                     ;lcall Phase_Init
+00CC                 127             Phase_Update_exit:
+00CC 22              128             ret
+                     129     ;------------------------------------------------------------
+                     130     ;---------------------Mode 1 phase call----------------------
+00CD                 131             Phase_Call:                                                                     ; S
+                             how 2 modules 7-segment LED
+00CD                 132             phase_1_call:
+00CD B9010D          133                     cjne r1, #1, phase_2_call
+00D0 EB              134                     mov a, r3
+00D1 120104          135                     lcall Show_Led_1 
+00D4 EB              136                     mov a, r3
+00D5 9403            137                     subb a, #yellow_time
+00D7 12011A          138                     lcall Show_Led_2
+00DA 020343          139                     ljmp exit
+00DD                 140             phase_2_call:
+00DD B9020B          141                     cjne r1, #2, phase_3_call
+00E0 EB              142                     mov a, r3
+00E1 120104          143                     lcall Show_Led_1
+00E4 EB              144                     mov a, r3
+00E5 12011A          145                     lcall Show_Led_2
+00E8 020343          146                     ljmp exit
+00EB                 147             phase_3_call:
+00EB B9030D          148                     cjne r1, #3, phase_4_call
+00EE EB              149                     mov a, r3
+00EF 9403            150                     subb a, #yellow_time
+00F1 120104          151                     lcall Show_Led_1
+00F4 EB              152                     mov a, r3
+00F5 12011A          153                     lcall Show_Led_2
+00F8 020343          154                     ljmp exit
+00FB                 155             phase_4_call:
+00FB EB              156                     mov a, r3
+00FC 120104          157                     lcall Show_Led_1
+00FF EB              158                     mov a, r3
+0100 12011A          159                     lcall Show_Led_2
+0103 22              160             ret    
+                     161     ;------------------------------------------------------------
+                     162     ;---------------Show 1st module 7-segment LED---------------- 
+0104                 163             Show_Led_1:                                                                     ; S
+                             how 1st module 7-segment LED
+0104 75F00A          164                     mov b, #10
+0107 84              165                     div ab
+0108 F590            166                     mov P1, a
+010A D294            167                     setb P1.4
+010C 1201E7          168                     lcall delay_10ms
+010F 85F090          169                     mov P1, b
+0112 D295            170                     setb P1.5
+0114 1201E7          171                     lcall delay_10ms
+0117 C295            172                     clr P1.5
+0119 22              173             ret   
+                     174     ;------------------------------------------------------------
+                     175     ;---------------Show 2nd module 7-segment LED---------------- 
+011A                 176             Show_Led_2:                                                                     ; S
+                             how 2nd module 7-segment LED
+011A 75F00A          177                     mov b, #10
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     4
+
+011D 84              178                     div ab
+011E F5A0            179                     mov P2, a
+0120 D2A4            180                     setb P2.4
+0122 1201E7          181                     lcall delay_10ms
+0125 85F0A0          182                     mov P2, b
+0128 D2A5            183                     setb P2.5
+012A 1201E7          184                     lcall delay_10ms
+012D C2A5            185                     clr P2.5
+012F 22              186             ret
+                     187     ;------------------------------------------------------------
+                     188     ;---------------------Mode 1 Phase Init---------------------- 
+0130                 189             Phase_Init:                                                                     ; T
+                             urn on leds current phase use 
+0130                 190             phase_1_init:
+0130 B90113          191                     cjne r1, #1, phase_2_init
+0133 7F01            192                     mov r7, #1
+0135 1202BF          193                     lcall red_on
+0138 120322          194                     lcall walk_on
+013B 7F02            195                     mov r7, #2
+013D 1202F6          196                     lcall green_on
+0140 12030C          197                     lcall stop_on
+0143 020343          198                     ljmp exit
+0146                 199             phase_2_init:
+0146 B90213          200                     cjne r1, #2, phase_3_init
+0149 7F01            201                     mov r7, #1
+014B 1202BF          202                     lcall red_on
+014E 12030C          203                     lcall stop_on
+0151 7F02            204                     mov r7, #2
+0153 1202D5          205                     lcall yellow_on
+0156 12030C          206                     lcall stop_on
+0159 020343          207                     ljmp exit
+015C                 208             phase_3_init:      
+015C B90313          209                     cjne r1, #3, phase_4_init
+015F 7F01            210                     mov r7, #1
+0161 1202F6          211                     lcall green_on
+0164 12030C          212                     lcall stop_on
+0167 7F02            213                     mov r7, #2
+0169 1202BF          214                     lcall red_on
+016C 120322          215                     lcall walk_on
+016F 020343          216                     ljmp exit
+0172                 217             phase_4_init:
+0172 7F01            218                     mov r7, #1
+0174 1202D5          219                     lcall yellow_on
+0177 12030C          220                     lcall stop_on
+017A 7F02            221                     mov r7, #2
+017C 1202BF          222                     lcall red_on
+017F 12030C          223                     lcall stop_on
+0182 22              224             ret
+                     225     ;------------------------------------------------------------
+                     226     ;---------------------Mode 1 Phase Clear---------------------
+0183                 227             Phase_Clear:                                                            ; Turn off 
+                             leds current phase use 
+0183                 228             phase_1_clear:
+0183 759000          229                     mov P1, #0
+0186 75A000          230                     mov P2, #0
+0189 B90113          231                     cjne r1, #1, phase_2_clear
+018C 7F01            232                     mov r7, #1
+018E 1202CA          233                     lcall red_off
+0191 12032D          234                     lcall walk_off
+0194 7F02            235                     mov r7, #2
+0196 120301          236                     lcall green_off
+0199 120317          237                     lcall stop_off
+019C 020343          238                     ljmp exit
+019F                 239             phase_2_clear:
+019F B90213          240                     cjne r1, #2, phase_3_clear
+01A2 7F01            241                     mov r7, #1
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     5
+
+01A4 1202CA          242                     lcall red_off
+01A7 120317          243                     lcall stop_off
+01AA 7F02            244                     mov r7, #2
+01AC 1202E0          245                     lcall yellow_off
+01AF 120317          246                     lcall stop_off
+01B2 020343          247                     ljmp exit
+01B5                 248             phase_3_clear:
+01B5 B90313          249                     cjne r1, #3, phase_4_clear
+01B8 7F01            250                     mov r7, #1
+01BA 120301          251                     lcall green_off
+01BD 120317          252                     lcall stop_off
+01C0 7F02            253                     mov r7, #2
+01C2 1202CA          254                     lcall red_off
+01C5 12032D          255                     lcall walk_off
+01C8 020343          256                     ljmp exit
+01CB                 257             phase_4_clear:
+01CB 7F01            258                     mov r7, #1                                                              
+01CD 1202E0          259                     lcall yellow_off                                                        
+01D0 120317          260                     lcall stop_off                                                  
+01D3 7F02            261                     mov r7, #2
+01D5 1202CA          262                     lcall red_off                                                   
+01D8 120317          263                     lcall stop_off                                                  
+01DB 22              264             ret
+                     265     ;------------------------------------------------------------
+                     266     ;------------------------Mode 2 Clear------------------------
+01DC                 267             Mode_2_Clear:
+01DC 7F01            268                     mov r7, #1                                                              ; T
+                             urn
+01DE 1202E0          269                     lcall yellow_off                                                ; off
+01E1 7F02            270                     mov r7, #2                                                              ; 2 
+01E3 1202E0          271                     lcall yellow_off                                                ; yellow le
+                             ds
+01E6 22              272             ret
+                     273     ;------------------------------------------------------------
+                     274     ;-------------------------Delay 10ms-------------------------
+01E7                 275             delay_10ms:
+01E7 758DD8          276                     mov TH1, #0d8h                                                  ; Init
+01EA 758BF0          277                     mov TL1, #0f0h                                                  ; Timer 1
+01ED D28E            278                     setb TR1                                                                ; E
+                             nable Timer 1
+01EF 308EFD          279                     jnb TR1, $                                                              ; w
+                             hile ...
+01F2 C28E            280                     clr TR1                                                                 ; D
+                             isable Timer 1
+01F4 C28F            281                     clr TF1                                                                 ; C
+                             lear flag
+01F6 22              282             ret
+                     283     ;------------------------------------------------------------
+                     284     ;------------Interrupt Service Routine for Reset-------------
+01F7                 285             Reset_ISR:
+01F7 7801            286                     mov r0, #1                                                              ; M
+                             ode = 1
+01F9 7901            287                     mov r1, #1                                                              ; P
+                             hase = 1
+01FB 7A00            288                     mov r2, #0                                                              ; 1
+                             0ms_counter = 0
+01FD 7B0A            289                     mov r3, #normal_red_time                                ; Set second
+01FF 7C0A            290                     mov r4, #normal_red_time                                ; Set red_time
+0201 7D14            291                     mov r5, #normal_green_time                              ; Set green_time
+0203 020030          292                     ljmp Start
+0206 32              293             reti
+                     294     ;------------------------------------------------------------
+                     295     ;-----Interrupt Service Routine for External Interrupt 0-----
+0207                 296             INT0_ISR:
+0207 7A00            297                     mov r2, #0                                                              ; R
+                             eset 10ms_counter
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     6
+
+0209 B80108          298                     cjne r0, #1, mode_2_turn
+020C                 299             mode_1_turn:
+020C 120183          300                     lcall Phase_Clear                                               ; Turn off 
+                             leds
+020F 7802            301                     mov r0, #2                                                              ; T
+                             urn to mode 2
+0211 020344          302                     ljmp exiti
+0214                 303             mode_2_turn:
+0214 7801            304                     mov r0, #1                                                              ; T
+                             urn to mode 1
+0216 7901            305                     mov r1, #1                                                              ; R
+                             eset to phase 1
+0218 EC              306                     mov a, r4                                                               ; S
+                             et
+0219 FB              307                     mov r3, a                                                               ; s
+                             econd = red_time
+021A 1201DC          308                     lcall Mode_2_Clear                                              ; Turn off 
+                             2 yellow leds
+021D 120130          309                     lcall Phase_Init                                                ; Turn on l
+                             eds phase 1 use
+0220 32              310             reti    
+                     311     ;------------------------------------------------------------
+                     312     ;-----Interrupt Service Routine for External Interrupt 1-----
+0221                 313             INT1_ISR:
+0221 BC0A07          314                     cjne r4, #normal_red_time, turn_to_normal
+0224                 315             turn_to_peak:
+0224 7C14            316                     mov r4, #peak_red_time
+0226 7D28            317                     mov r5, #peak_green_time
+0228 020344          318                     ljmp exiti
+022B                 319             turn_to_normal:      
+022B 7C0A            320                     mov r4, #normal_red_time
+022D 7D14            321                     mov r5, #normal_green_time
+022F 32              322             reti
+                     323     ;------------------------------------------------------------
+                     324     ;------Interrupt Service Routine for Timer 0 Interrupt-------
+0230                 325             Timer0_ISR:
+0230 C28C            326                     clr TR0                                                                 ; D
+                             isable Timer 0
+0232 0A              327                     inc r2                                                                  ; I
+                             nc 10ms_counter              
+0233 B80171          328                     cjne r0, #1, if_mode_2                                  ; Jump if mode != 1
+0236                 329             if_mode_1:
+0236 BA3234          330                     cjne r2, #50, inc_second                                ; Jump if 10ms_coun
+                             ter != 50 (0.5s)
+0239 7403            331                     mov a, #yellow_time                                             
+023B 2403            332                     add a, #3                                                               
+023D 8BF0            333                     mov b, r3                                                               
+023F C2D7            334                     clr CY                                                                  ; C
+                             lear CY
+0241 B5F002          335                     cjne a, b, check_greater_smaller_1              ; Jump if second != yellow_
+                             time + 3
+0244 8003            336                     jmp oke
+0246                 337             check_greater_smaller_1:
+0246 20D721          338                     jb CY, not_oke                                                  ; Jump if s
+                             econd > yellow_time + 3
+0249                 339             oke:
+0249 7403            340                     mov a, #yellow_time                                             
+024B 8BF0            341                     mov b, r3
+024D C2D7            342                     clr CY                                                                  ; C
+                             lear CY
+024F B5F002          343                     cjne a, b, check_greater_smaller_2              ; Jump if second != yellow_
+                             time
+0252 8003            344                     jmp oke_tiep    
+0254                 345             check_greater_smaller_2:
+0254 30D713          346                     jnb CY, not_oke                                                 ; Jump if s
+                             econd < yellow_time + 3
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     7
+
+0257                 347             oke_tiep:
+0257 B90108          348                     cjne r1, #1, if_phase_3                                 ; Jump if phase != 1
+025A                 349             if_phase_1:
+025A 7F01            350                     mov r7, #1
+025C 120322          351                     lcall walk_on
+025F 0202B6          352                     ljmp set_timer0
+0262                 353             if_phase_3:
+0262 B90305          354                     cjne r1, #3, not_oke                                    ; Jump if phase != 3
+0265 7F02            355                     mov r7, #2
+0267 120322          356                     lcall walk_on
+026A                 357             not_oke:    
+026A 0202B6          358                     ljmp set_timer0
+026D                 359             inc_second:
+026D BA6446          360                     cjne r2, #100, set_timer0                               ; Jump if 10ms_coun
+                             ter
+0270 7A00            361                     mov r2, #0                                                              ; R
+                             eset 10ms_counter
+0272 1B              362                     dec r3                                                                  ; D
+                             ec second
+0273 7403            363                     mov a, #yellow_time
+0275 2403            364                     add a, #3
+0277 8BF0            365                     mov b, r3
+0279 C2D7            366                     clr CY                                                                  ; C
+                             lear CY
+027B B5F002          367                     cjne a, b, check_greater_smaller_3              ; Jump if second != yellow_
+                             time + 3
+027E 8003            368                     jmp oke_2
+0280                 369             check_greater_smaller_3:
+0280 20D721          370                     jb CY, not_oke_2                                                ; Jump if s
+                             econd > yellow_time + 3
+0283                 371             oke_2:
+0283 7403            372                     mov a, #yellow_time
+0285 8BF0            373                     mov b, r3
+0287 C2D7            374                     clr CY
+0289 B5F002          375                     cjne a, b, check_greater_smaller_4              ; Jump if second != yellow_
+                             time
+028C 8003            376                     jmp oke_tiep_2
+028E                 377             check_greater_smaller_4:
+028E 30D713          378                     jnb CY, not_oke_2                                               ; Jump if s
+                             econd < yellow_time
+0291                 379             oke_tiep_2:
+0291 B90108          380                     cjne r1, #1, if_phase_3_2                               ; Jump if phase != 1
+0294                 381             if_phase_1_2:
+0294 7F01            382                     mov r7, #1
+0296 12032D          383                     lcall walk_off
+0299 0202B6          384                     ljmp set_timer0
+029C                 385             if_phase_3_2:
+029C B90305          386                     cjne r1, #3, not_oke_2                                  ; Jump if phase != 3
+029F 7F02            387                     mov r7, #2
+02A1 12032D          388                     lcall walk_off
+02A4                 389             not_oke_2:
+02A4 0202B6          390                     ljmp set_timer0
+02A7                 391             if_mode_2:
+02A7 BA320C          392                     cjne r2, #50, set_timer0
+02AA 7A00            393                     mov r2, #0                                                              ; R
+                             eset 10ms_counter
+02AC 7F01            394                     mov r7, #1                                                              ; T
+                             oggle
+02AE 1202EB          395                     lcall yellow_toggle                                             ; 2
+02B1 7F02            396                     mov r7, #2                                                              ; y
+                             ellow
+02B3 1202EB          397                     lcall yellow_toggle                                             ; led
+02B6                 398             set_timer0:
+02B6 758CD8          399                     mov TH0, #0d8h                                                  ; Reset
+02B9 758AFF          400                     mov TL0, #0ffh                                                  ; Timer 0
+02BC D28C            401                     setb TR0                                                                ; E
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     8
+
+                             nable Timer 0
+02BE 32              402             reti
+                     403     ;------------------------------------------------------------
+                     404     ;-------------------------Red Led On-------------------------
+02BF                 405             red_on:
+02BF BF0105          406                     cjne r7, #1, red_2_on
+02C2                 407             red_1_on:      
+02C2 C2B0            408                     clr red_led_1
+02C4 020343          409                     ljmp exit
+02C7                 410             red_2_on:
+02C7 C2B1            411                     clr red_led_2
+02C9 22              412             ret
+                     413     ;------------------------------------------------------------
+                     414     ;-------------------------Red Led Off------------------------
+02CA                 415             red_off:
+02CA BF0105          416                     cjne r7, #1, red_2_off
+02CD                 417             red_1_off:
+02CD D2B0            418                     setb red_led_1
+02CF 020343          419                     ljmp exit
+02D2                 420             red_2_off:
+02D2 D2B1            421                     setb red_led_2
+02D4 22              422             ret
+                     423     ;------------------------------------------------------------
+                     424     ;------------------------Yellow Led On-----------------------
+02D5                 425             yellow_on:
+02D5 BF0105          426                     cjne r7, #1, yellow_2_on
+02D8                 427             yellow_1_on:      
+02D8 C2B4            428                     clr yellow_led_1
+02DA 020343          429                     ljmp exit
+02DD                 430             yellow_2_on:
+02DD C2B5            431                     clr yellow_led_2
+02DF 22              432             ret
+                     433     ;------------------------------------------------------------
+                     434     ;------------------------Yellow Led Off----------------------
+02E0                 435             yellow_off:
+02E0 BF0105          436                     cjne r7, #1, yellow_2_off
+02E3                 437             yellow_1_off:
+02E3 D2B4            438                     setb yellow_led_1
+02E5 020343          439                     ljmp exit
+02E8                 440             yellow_2_off:
+02E8 D2B5            441                     setb yellow_led_2
+02EA 22              442             ret
+                     443     ;------------------------------------------------------------
+                     444     ;-----------------------Yellow Led Toggle--------------------
+02EB                 445             yellow_toggle:
+02EB BF0105          446                     cjne r7, #1, yellow_2_toggle
+02EE                 447             yellow_1_toggle:
+02EE B2B4            448                     cpl yellow_led_1
+02F0 020343          449                     ljmp exit
+02F3                 450             yellow_2_toggle:
+02F3 B2B5            451                     cpl yellow_led_2
+02F5 22              452             ret
+                     453     ;------------------------------------------------------------
+                     454     ;-------------------------Green Led On-----------------------
+02F6                 455             green_on:
+02F6 BF0105          456                     cjne r7, #1, green_2_on
+02F9                 457             green_1_on:      
+02F9 C2B6            458                     clr green_led_1
+02FB 020343          459                     ljmp exit
+02FE                 460             green_2_on:
+02FE C2B7            461                     clr green_led_2
+0300 22              462             ret
+                     463     ;------------------------------------------------------------
+                     464     ;-------------------------Green Led Off----------------------
+0301                 465             green_off:
+0301 BF0105          466                     cjne r7, #1, green_2_off
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE     9
+
+0304                 467             green_1_off:
+0304 D2B6            468                     setb green_led_1
+0306 020343          469                     ljmp exit
+0309                 470             green_2_off:
+0309 D2B7            471                     setb green_led_2
+030B 22              472             ret
+                     473     ;------------------------------------------------------------
+                     474     ;--------------------------Stop Led On-----------------------
+030C                 475             stop_on:
+030C BF0105          476                     cjne r7, #1, stop_2_on
+030F                 477             stop_1_on:      
+030F C280            478                     clr stop_led_1
+0311 020343          479                     ljmp exit
+0314                 480             stop_2_on:
+0314 C281            481                     clr stop_led_2
+0316 22              482             ret
+                     483     ;------------------------------------------------------------
+                     484     ;--------------------------Stop Led Off----------------------
+0317                 485             stop_off:
+0317 BF0105          486                     cjne r7, #1, stop_2_off
+031A                 487             stop_1_off:
+031A D280            488                     setb stop_led_1
+031C 020343          489                     ljmp exit
+031F                 490             stop_2_off:
+031F D281            491                     setb stop_led_2
+0321 22              492             ret
+                     493     
+                     494     ;------------------------------------------------------------
+                     495     ;--------------------------Walk Led On-----------------------
+0322                 496             walk_on:
+0322 BF0105          497                     cjne r7, #1, walk_2_on
+0325                 498             walk_1_on:      
+0325 C282            499                     clr walk_led_1
+0327 020343          500                     ljmp exit
+032A                 501             walk_2_on:
+032A C283            502                     clr walk_led_2
+032C 22              503             ret
+                     504     
+                     505     ;------------------------------------------------------------
+                     506     ;--------------------------Walk Led Off----------------------
+032D                 507             walk_off:
+032D BF0105          508                     cjne r7, #1, walk_2_off
+0330                 509             walk_1_off:
+0330 D282            510                     setb walk_led_1
+0332 020343          511                     ljmp exit
+0335                 512             walk_2_off:
+0335 D283            513                     setb walk_led_2
+0337 22              514             ret
+                     515     
+                     516     ;------------------------------------------------------------
+                     517     ;-------------------------Walk Led Toggle--------------------
+0338                 518             walk_toggle:
+0338 BF0105          519                     cjne r7, #1, walk_2_toggle
+033B                 520             walk_1_toggle:
+033B B282            521                     cpl walk_led_1
+033D 020343          522                     ljmp exit
+0340                 523             walk_2_toggle:
+0340 B283            524                     cpl walk_led_2
+0342 22              525             ret
+                     526     ;------------------------------------------------------------
+0343 22              527             exit: ret
+0344 32              528             exiti: reti
+                     529     ;------------------------------------------------------------------------------------------
+                             ---
+                     530             END
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE    10
+
+SYMBOL TABLE LISTING
+------ ----- -------
+
+
+N A M E                  T Y P E  V A L U E   ATTRIBUTES
+
+B . . . . . . . . . . .  D ADDR   00F0H   A   
+CHECK_GREATER_SMALLER_1  C ADDR   0246H   A   
+CHECK_GREATER_SMALLER_2  C ADDR   0254H   A   
+CHECK_GREATER_SMALLER_3  C ADDR   0280H   A   
+CHECK_GREATER_SMALLER_4  C ADDR   028EH   A   
+CY. . . . . . . . . . .  B ADDR   00D0H.7 A   
+DELAY_10MS. . . . . . .  C ADDR   01E7H   A   
+EXIT. . . . . . . . . .  C ADDR   0343H   A   
+EXITI . . . . . . . . .  C ADDR   0344H   A   
+GREEN_1_OFF . . . . . .  C ADDR   0304H   A   
+GREEN_1_ON. . . . . . .  C ADDR   02F9H   A   
+GREEN_2_OFF . . . . . .  C ADDR   0309H   A   
+GREEN_2_ON. . . . . . .  C ADDR   02FEH   A   
+GREEN_LED_1 . . . . . .  N NUMB   00B6H   A   
+GREEN_LED_2 . . . . . .  N NUMB   00B7H   A   
+GREEN_OFF . . . . . . .  C ADDR   0301H   A   
+GREEN_ON. . . . . . . .  C ADDR   02F6H   A   
+IE. . . . . . . . . . .  D ADDR   00A8H   A   
+IF_MODE_1 . . . . . . .  C ADDR   0236H   A   
+IF_MODE_2 . . . . . . .  C ADDR   02A7H   A   
+IF_PHASE_1. . . . . . .  C ADDR   025AH   A   
+IF_PHASE_1_2. . . . . .  C ADDR   0294H   A   
+IF_PHASE_3. . . . . . .  C ADDR   0262H   A   
+IF_PHASE_3_2. . . . . .  C ADDR   029CH   A   
+INC_SECOND. . . . . . .  C ADDR   026DH   A   
+INT0_ISR. . . . . . . .  C ADDR   0207H   A   
+INT1_ISR. . . . . . . .  C ADDR   0221H   A   
+LOOP. . . . . . . . . .  C ADDR   0047H   A   
+MODE_1. . . . . . . . .  C ADDR   004FH   A   
+MODE_1_TURN . . . . . .  C ADDR   020CH   A   
+MODE_2_CLEAR. . . . . .  C ADDR   01DCH   A   
+MODE_2_TURN . . . . . .  C ADDR   0214H   A   
+NORMAL_GREEN_TIME . . .  N NUMB   0014H   A   
+NORMAL_RED_TIME . . . .  N NUMB   000AH   A   
+NOT_OKE . . . . . . . .  C ADDR   026AH   A   
+NOT_OKE_2 . . . . . . .  C ADDR   02A4H   A   
+OKE . . . . . . . . . .  C ADDR   0249H   A   
+OKE_2 . . . . . . . . .  C ADDR   0283H   A   
+OKE_TIEP. . . . . . . .  C ADDR   0257H   A   
+OKE_TIEP_2. . . . . . .  C ADDR   0291H   A   
+P1. . . . . . . . . . .  D ADDR   0090H   A   
+P2. . . . . . . . . . .  D ADDR   00A0H   A   
+PEAK_GREEN_TIME . . . .  N NUMB   0028H   A   
+PEAK_RED_TIME . . . . .  N NUMB   0014H   A   
+PHASE_1_CALL. . . . . .  C ADDR   00CDH   A   
+PHASE_1_CLEAR . . . . .  C ADDR   0183H   A   
+PHASE_1_INIT. . . . . .  C ADDR   0130H   A   
+PHASE_1_UPDATE. . . . .  C ADDR   0056H   A   
+PHASE_2_CALL. . . . . .  C ADDR   00DDH   A   
+PHASE_2_CLEAR . . . . .  C ADDR   019FH   A   
+PHASE_2_INIT. . . . . .  C ADDR   0146H   A   
+PHASE_2_UPDATE. . . . .  C ADDR   0071H   A   
+PHASE_3_CALL. . . . . .  C ADDR   00EBH   A   
+PHASE_3_CLEAR . . . . .  C ADDR   01B5H   A   
+PHASE_3_INIT. . . . . .  C ADDR   015CH   A   
+PHASE_3_UPDATE. . . . .  C ADDR   0094H   A   
+PHASE_4_CALL. . . . . .  C ADDR   00FBH   A   
+PHASE_4_CLEAR . . . . .  C ADDR   01CBH   A   
+PHASE_4_INIT. . . . . .  C ADDR   0172H   A   
+PHASE_4_UPDATE. . . . .  C ADDR   00AFH   A   
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE    11
+
+PHASE_CALL. . . . . . .  C ADDR   00CDH   A   
+PHASE_CLEAR . . . . . .  C ADDR   0183H   A   
+PHASE_INIT. . . . . . .  C ADDR   0130H   A   
+PHASE_UPDATE. . . . . .  C ADDR   0056H   A   
+PHASE_UPDATE_EXIT . . .  C ADDR   00CCH   A   
+RED_1_OFF . . . . . . .  C ADDR   02CDH   A   
+RED_1_ON. . . . . . . .  C ADDR   02C2H   A   
+RED_2_OFF . . . . . . .  C ADDR   02D2H   A   
+RED_2_ON. . . . . . . .  C ADDR   02C7H   A   
+RED_LED_1 . . . . . . .  N NUMB   00B0H   A   
+RED_LED_2 . . . . . . .  N NUMB   00B1H   A   
+RED_OFF . . . . . . . .  C ADDR   02CAH   A   
+RED_ON. . . . . . . . .  C ADDR   02BFH   A   
+RESET_ISR . . . . . . .  C ADDR   01F7H   A   
+SET_TIMER0. . . . . . .  C ADDR   02B6H   A   
+SHOW_LED_1. . . . . . .  C ADDR   0104H   A   
+SHOW_LED_2. . . . . . .  C ADDR   011AH   A   
+START . . . . . . . . .  C ADDR   0030H   A   
+STOP_1_OFF. . . . . . .  C ADDR   031AH   A   
+STOP_1_ON . . . . . . .  C ADDR   030FH   A   
+STOP_2_OFF. . . . . . .  C ADDR   031FH   A   
+STOP_2_ON . . . . . . .  C ADDR   0314H   A   
+STOP_LED_1. . . . . . .  N NUMB   0080H   A   
+STOP_LED_2. . . . . . .  N NUMB   0081H   A   
+STOP_OFF. . . . . . . .  C ADDR   0317H   A   
+STOP_ON . . . . . . . .  C ADDR   030CH   A   
+TCON. . . . . . . . . .  D ADDR   0088H   A   
+TF1 . . . . . . . . . .  B ADDR   0088H.7 A   
+TH0 . . . . . . . . . .  D ADDR   008CH   A   
+TH1 . . . . . . . . . .  D ADDR   008DH   A   
+TIMER0_ISR. . . . . . .  C ADDR   0230H   A   
+TL0 . . . . . . . . . .  D ADDR   008AH   A   
+TL1 . . . . . . . . . .  D ADDR   008BH   A   
+TMOD. . . . . . . . . .  D ADDR   0089H   A   
+TR0 . . . . . . . . . .  B ADDR   0088H.4 A   
+TR1 . . . . . . . . . .  B ADDR   0088H.6 A   
+TURN_TO_NORMAL. . . . .  C ADDR   022BH   A   
+TURN_TO_PEAK. . . . . .  C ADDR   0224H   A   
+WALK_1_OFF. . . . . . .  C ADDR   0330H   A   
+WALK_1_ON . . . . . . .  C ADDR   0325H   A   
+WALK_1_TOGGLE . . . . .  C ADDR   033BH   A   
+WALK_2_OFF. . . . . . .  C ADDR   0335H   A   
+WALK_2_ON . . . . . . .  C ADDR   032AH   A   
+WALK_2_TOGGLE . . . . .  C ADDR   0340H   A   
+WALK_LED_1. . . . . . .  N NUMB   0082H   A   
+WALK_LED_2. . . . . . .  N NUMB   0083H   A   
+WALK_OFF. . . . . . . .  C ADDR   032DH   A   
+WALK_ON . . . . . . . .  C ADDR   0322H   A   
+WALK_TOGGLE . . . . . .  C ADDR   0338H   A   
+YELLOW_1_OFF. . . . . .  C ADDR   02E3H   A   
+YELLOW_1_ON . . . . . .  C ADDR   02D8H   A   
+YELLOW_1_TOGGLE . . . .  C ADDR   02EEH   A   
+YELLOW_2_OFF. . . . . .  C ADDR   02E8H   A   
+YELLOW_2_ON . . . . . .  C ADDR   02DDH   A   
+YELLOW_2_TOGGLE . . . .  C ADDR   02F3H   A   
+YELLOW_LED_1. . . . . .  N NUMB   00B4H   A   
+YELLOW_LED_2. . . . . .  N NUMB   00B5H   A   
+YELLOW_OFF. . . . . . .  C ADDR   02E0H   A   
+YELLOW_ON . . . . . . .  C ADDR   02D5H   A   
+YELLOW_TIME . . . . . .  N NUMB   0003H   A   
+YELLOW_TOGGLE . . . . .  C ADDR   02EBH   A   
+
+
+REGISTER BANK(S) USED: 0 
+
+
+ASSEMBLY COMPLETE.  0 WARNING(S), 0 ERROR(S)
+A51 MACRO ASSEMBLER  ASM                                                                  06/09/2022 00:35:20 PAGE    12
+
